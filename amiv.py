@@ -136,6 +136,7 @@ class AmivApp(Gtk.Application):
             "gui": {
                 "dark_theme": True,
                 "scaling": "bilinear",
+                "inhibit_idle_on_fullscreen": True,
             },
             "keys": {
                 "toggle_fullscreen": "f",
@@ -188,6 +189,9 @@ class AmivApp(Gtk.Application):
 
     def on_activate(self, app):
         self.win = MainWindow(application=app)
+
+        if self.config["gui"]["inhibit_idle_on_fullscreen"]:
+            self.win.connect("notify::fullscreened", self.update_idle_inhibit)
 
         eck = Gtk.EventControllerKey.new()
         eck.connect("key-pressed", self.handle_key)
@@ -307,6 +311,14 @@ class AmivApp(Gtk.Application):
         else:
             self.set_center_pos(self.x, self.y)
         self.win.queue_draw_image()
+
+    def update_idle_inhibit(self, win, fullscreened):
+        if win.is_fullscreen():
+            self.inhibit(self.win,
+                Gtk.ApplicationInhibitFlags.IDLE,
+                "fullscreen")
+        else:
+            self.inhibit(self.win, 0, None)
 
     def draw_image(self, area, cr, width, height):
         if not width or not height or not self.image or self.zoom <= 0:
