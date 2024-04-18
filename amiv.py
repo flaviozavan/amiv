@@ -8,6 +8,7 @@ import argparse
 import tomllib
 import os
 import platformdirs
+import mimetypes
 
 class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, **kwargs):
@@ -135,6 +136,10 @@ class AmivApp(Gtk.Application):
 
     def get_default_config(self):
         return {
+            "general": {
+                "load_directory": True,
+                "filter_extensions": True,
+            },
             "gui": {
                 "dark_theme": True,
                 "scaling": "bilinear",
@@ -171,11 +176,19 @@ class AmivApp(Gtk.Application):
         parser.add_argument("-f",
             "--fullscreen",
             action="store_true")
+        parser.add_argument("-r",
+            "-R",
+            "--recursive",
+            action="store_true")
+        parser.add_argument("--ignore-links",
+            action="store_true")
         self.args = parser.parse_args(args=argv[1:])
 
         self.config = self.load_config(self.args.config)
         self.scaling = self.get_scaling_from_config()
         self.create_key_map()
+
+        self.images, self.first_image_index = self.compile_image_list()
 
         settings = Gtk.Settings.get_default()
         settings.set_property("gtk-application-prefer-dark-theme",
@@ -220,18 +233,72 @@ class AmivApp(Gtk.Application):
         self.win.connect_image_area_signal("resize", self.handle_resize)
         self.win.present()
 
+        self.win.set_total_files(len(self.images))
         self.current_image = -1
-        self.win.set_total_files(len(self.args.images))
-        self.skip(1)
+        self.skip(self.first_image_index+1)
+
+    def compile_image_list(self):
+        if not self.config["general"]["load_directory"]:
+            return self.args.images
+
+        images = []
+        first_filename = None
+        visited = set()
+        for path in self.args.images:
+            triggering_filename = None
+            path = path.rstrip(os.path.sep)
+            if not os.path.isdir(path):
+                if not os.path.isfile(path):
+                    continue
+                triggering_filename = path
+                path = os.path.split(path)[0]
+                if not path:
+                    path = "."
+                    triggering_filename = os.path.join(".",
+                        triggering_filename)
+
+
+            new_images = []
+            for dirpath, _, filenames in \
+                os.walk(path, followlinks=not self.args.ignore_links):
+
+                if dirpath in visited:
+                    continue
+                visited.add(dirpath)
+
+                for entry in filenames:
+                    mimetype = mimetypes.guess_type(entry)[0]
+                    if not self.config["general"]["filter_extensions"] or \
+                        (mimetype and mimetype.startswith("image/")):
+
+                        filepath = os.path.join(dirpath, entry)
+                        if first_filename is None and \
+                            filepath == triggering_filename:
+                            first_filename = filepath
+
+                        new_images.append(filepath)
+
+                if not self.args.recursive:
+                    break
+
+            images += sorted(new_images,
+                key=lambda x: (x.count(os.path.sep), x))
+
+        if first_filename is None:
+            first_image_index = 0
+        else:
+            first_image_index = images.index(first_filename)
+
+        return images, first_image_index
 
     def load_image(self):
-        if not self.args.images:
+        if not self.images:
             self.image = None
             self.win.set_current_file_index(0)
             self.win.set_file_label("No image")
             return True
 
-        image_path = self.args.images[self.current_image]
+        image_path = self.images[self.current_image]
         try:
             self.image = GdkPixbuf.Pixbuf.new_from_file(image_path)
         except gi.repository.GLib.GError:
@@ -253,17 +320,17 @@ class AmivApp(Gtk.Application):
 
         ok = False
         while not ok:
-            if not self.args.images:
+            if not self.images:
                 self.current_image = -1
             else:
                 self.current_image = \
-                    (initial_image+count) % len(self.args.images)
+                    (initial_image+count) % len(self.images)
 
             if self.current_image == initial_image or self.load_image():
                 ok = True
             else:
-                self.args.images.pop(self.current_image)
-                self.win.set_total_files(len(self.args.images))
+                self.images.pop(self.current_image)
+                self.win.set_total_files(len(self.images))
                 if self.current_image < initial_image:
                     initial_image -= 1
 
