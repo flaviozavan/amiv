@@ -98,6 +98,8 @@ class AmivApp(Gtk.Application):
             "fit_to_window": self.set_fit_to_window,
             "rotate_cw": lambda: self.rotate(270),
             "rotate_ccw": lambda: self.rotate(90),
+            "next": lambda: self.skip(1),
+            "previous": lambda: self.skip(-1),
         }
 
         self.key_map = {}
@@ -146,6 +148,8 @@ class AmivApp(Gtk.Application):
                 "zoom_100": "equal",
                 "rotate_cw": "greater",
                 "rotate_ccw": "less",
+                "next": "Right",
+                "previous": "Left",
             },
         }
 
@@ -216,18 +220,62 @@ class AmivApp(Gtk.Application):
         self.win.connect_image_area_signal("resize", self.handle_resize)
         self.win.present()
 
-        if self.args.images:
-            self.load_image(self.args.images[0])
+        self.current_image = -1
+        self.win.set_total_files(len(self.args.images))
+        self.skip(1)
 
-    def load_image(self, image_path):
-        self.image = GdkPixbuf.Pixbuf.new_from_file(image_path)
+    def load_image(self):
+        if not self.args.images:
+            self.image = None
+            self.win.set_current_file_index(0)
+            self.win.set_file_label("No image")
+            return True
+
+        image_path = self.args.images[self.current_image]
+        try:
+            self.image = GdkPixbuf.Pixbuf.new_from_file(image_path)
+        except gi.repository.GLib.GError:
+            return False
+
         self.win.set_file_label(image_path)
+        self.win.set_current_file_index(self.current_image+1)
         self.x = self.image.get_width()/2
         self.y = self.image.get_height()/2
         self.last_zoom = -1
 
-        self.win.set_total_files(1)
-        self.win.set_current_file_index(1)
+        if self.fit_image:
+            self.fit_to_window()
+
+        return True
+
+    def skip(self, count, try_multiple=True):
+        initial_image = self.current_image
+
+        ok = False
+        while not ok:
+            if not self.args.images:
+                self.current_image = -1
+            else:
+                self.current_image = \
+                    (initial_image+count) % len(self.args.images)
+
+            if self.current_image == initial_image or self.load_image():
+                ok = True
+            else:
+                self.args.images.pop(self.current_image)
+                self.win.set_total_files(len(self.args.images))
+                if self.current_image < initial_image:
+                    initial_image -= 1
+
+            if not try_multiple:
+                break
+
+        if ok:
+            self.win.queue_draw_image()
+        else:
+            self.current_image = initial_image
+
+        return ok
 
     def toggle_fullscreen(self):
         if self.win.is_fullscreen():
@@ -288,6 +336,7 @@ class AmivApp(Gtk.Application):
         self.y = new_y
 
     def adjust_zoom(self, ratio):
+        self.fit_image = False
         self.update_zoom(self.zoom*ratio)
 
     def set_zoom(self, val):
