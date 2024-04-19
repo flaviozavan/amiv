@@ -2,13 +2,14 @@
 
 import gi
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, Gdk, Pango, GdkPixbuf
+from gi.repository import Gtk, Gdk, Pango, GdkPixbuf, GLib
 import sys
 import argparse
 import tomllib
 import os
 import platformdirs
 import mimetypes
+import random
 
 class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, **kwargs):
@@ -33,20 +34,26 @@ class MainWindow(Gtk.ApplicationWindow):
         self.file_label.set_ellipsize(Pango.EllipsizeMode.START)
         self.status_box.append(self.file_label)
 
-        self.status_separator = Gtk.Separator(
-            orientation=Gtk.Orientation.VERTICAL)
-        self.status_separator.set_margin_start(32)
-        self.status_box.append(self.status_separator)
+        separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        separator.set_margin_start(32)
+        self.status_box.append(separator)
+
+        self.delay_label = Gtk.Label()
+        self.delay_label.set_xalign(1)
+        self.status_box.append(self.delay_label)
+
+        separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        separator.set_margin_start(8)
+        self.status_box.append(separator)
 
         self.zoom_label = Gtk.Label()
         self.zoom_label.set_xalign(1)
         self.status_box.append(self.zoom_label)
         self.set_zoom(1)
 
-        self.status_separator = Gtk.Separator(
-            orientation=Gtk.Orientation.VERTICAL)
-        self.status_separator.set_margin_start(8)
-        self.status_box.append(self.status_separator)
+        separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        separator.set_margin_start(8)
+        self.status_box.append(separator)
 
         self.navigation_label = Gtk.Label()
         self.navigation_label.set_xalign(1)
@@ -84,6 +91,12 @@ class MainWindow(Gtk.ApplicationWindow):
     def queue_draw_image(self):
         self.image_area.queue_draw()
 
+    def set_delay_label(self, delay_type, seconds):
+        if seconds:
+            self.delay_label.set_label(f"{delay_type} {seconds}s")
+        else:
+            self.delay_label.set_label("")
+
 
 class AmivApp(Gtk.Application):
     def __init__(self, **kwargs):
@@ -101,6 +114,8 @@ class AmivApp(Gtk.Application):
             "rotate_ccw": lambda: self.rotate(90),
             "next": lambda: self.skip(1),
             "previous": lambda: self.skip(-1),
+            "delay_up": lambda: self.adjust_delay(1),
+            "delay_down": lambda: self.adjust_delay(-1),
         }
 
         self.key_map = {}
@@ -155,6 +170,8 @@ class AmivApp(Gtk.Application):
                 "rotate_ccw": "less",
                 "next": "Right",
                 "previous": "Left",
+                "delay_up": "Up",
+                "delay_down": "Down",
             },
         }
 
@@ -201,6 +218,8 @@ class AmivApp(Gtk.Application):
         self.image_area_height = 0
         self.x = 0
         self.y = 0
+        self.delay = 0
+        self.timeout_source = None
 
         super().run(**kwargs)
 
@@ -301,7 +320,7 @@ class AmivApp(Gtk.Application):
         image_path = self.images[self.current_image]
         try:
             self.image = GdkPixbuf.Pixbuf.new_from_file(image_path)
-        except gi.repository.GLib.GError:
+        except GLib.GError:
             return False
 
         self.win.set_file_label(image_path)
@@ -460,6 +479,44 @@ class AmivApp(Gtk.Application):
         Gdk.cairo_set_source_pixbuf(cr, subbuf, cx, cy)
 
         cr.paint()
+
+    def advance_slideshow(self, random_next):
+        self.timeout_source = None
+        if not random_next:
+            self.skip(1)
+        else:
+            # Manual retry, ensuring we never skip to the same image
+            ok = False
+            while not ok and len(self.images) > 1:
+                ok = self.skip(random.randint(1, len(self.images)-1), False)
+
+        self.maybe_setup_slideshow_timeout()
+        # Returning False prevents repeating
+        return False
+
+    def maybe_setup_slideshow_timeout(self):
+        if self.timeout_source is None and self.delay:
+            self.timeout_source = GLib.timeout_add_seconds(
+                abs(self.delay),
+                self.advance_slideshow,
+                self.delay > 0)
+
+    def adjust_delay(self, step):
+        self.delay += step
+
+        if self.timeout_source is not None:
+            GLib.source_remove(self.timeout_source)
+            self.timeout_source = None
+
+        if not self.delay:
+            self.win.set_delay_label("", 0)
+        elif self.delay > 0:
+            self.win.set_delay_label("Random", self.delay)
+        else:
+            self.win.set_delay_label("Sequential", abs(self.delay))
+
+        self.maybe_setup_slideshow_timeout()
+
 
 app = AmivApp()
 app.run(sys.argv)
