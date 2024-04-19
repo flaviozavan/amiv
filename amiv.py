@@ -116,6 +116,8 @@ class AmivApp(Gtk.Application):
             "previous": lambda: self.skip(-1),
             "delay_up": lambda: self.adjust_delay(1),
             "delay_down": lambda: self.adjust_delay(-1),
+            "next_dir": lambda: self.skip_dir(1),
+            "previous_dir": lambda: self.skip_dir(-1),
         }
 
         self.key_map = {}
@@ -172,6 +174,8 @@ class AmivApp(Gtk.Application):
                 "previous": "Left",
                 "delay_up": "Up",
                 "delay_down": "Down",
+                "next_dir": "Page_Up",
+                "previous_dir": "Page_Down",
             },
         }
 
@@ -479,6 +483,22 @@ class AmivApp(Gtk.Application):
         Gdk.cairo_set_source_pixbuf(cr, subbuf, cx, cy)
 
         cr.paint()
+
+    def skip_dir(self, count):
+        step = 1 if count > 0 else -1
+        diff = 0
+        starting_image = self.current_image
+        for _ in range(abs(count)):
+            for i in range(1, len(self.images)):
+                candidate = (starting_image + step*i) % len(self.images)
+                candidate_dir = os.path.split(self.images[candidate])[0]
+                dir_before_candidate = os.path.split(
+                    self.images[(candidate-1) % len(self.images)])[0]
+                if candidate_dir != dir_before_candidate:
+                    diff += step*i
+                    starting_image = candidate
+                    break
+        self.skip(diff)
 
     def advance_slideshow(self, random_next):
         self.timeout_source = None
