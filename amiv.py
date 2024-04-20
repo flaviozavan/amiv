@@ -323,20 +323,37 @@ class AmivApp(Gtk.Application):
 
         image_path = self.images[self.current_image]
         try:
-            self.image = GdkPixbuf.Pixbuf.new_from_file(image_path)
+            self.image = GdkPixbuf.PixbufAnimation.new_from_file(image_path)
         except GLib.GError:
             return False
+
+        self.image_it = self.image.get_iter(None)
+        self.get_next_frame(False)
 
         self.win.set_file_label(image_path)
         self.win.set_current_file_index(self.current_image+1)
         self.x = self.image.get_width()/2
         self.y = self.image.get_height()/2
-        self.last_zoom = -1
 
         if self.fit_image:
             self.fit_to_window()
 
         return True
+
+    def get_next_frame(self, display):
+        self.image_it.advance()
+        self.frame = self.image_it.get_pixbuf()
+        self.last_zoom = -1
+        delay_to_next = self.image_it.get_delay_time()
+
+        if delay_to_next != -1:
+            self.timeout_source = GLib.timeout_add(
+                delay_to_next,
+                self.get_next_frame,
+                True)
+
+        if display:
+            self.win.queue_draw_image()
 
     def skip(self, count, try_multiple=True):
         initial_image = self.current_image
@@ -466,7 +483,7 @@ class AmivApp(Gtk.Application):
         if self.zoom != self.last_zoom:
             new_width = self.image.get_width() * self.zoom
             new_height = self.image.get_height() * self.zoom
-            self.scaled_buf = self.image.scale_simple(new_width,
+            self.scaled_buf = self.frame.scale_simple(new_width,
                 new_height,
                 self.scaling)
 
