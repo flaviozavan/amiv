@@ -121,10 +121,11 @@ class AmivApp(Gtk.Application):
         }
 
         self.key_map = {}
-        for function, key in self.config["keys"].items():
+        for function, keys in self.config["keys"].items():
             if function in possible_key_bindings:
-                keyval = Gdk.keyval_from_name(key)
-                self.key_map[keyval] = possible_key_bindings[function]
+                for key in keys.split(","):
+                    keyval = Gdk.keyval_from_name(key)
+                    self.key_map[keyval] = possible_key_bindings[function]
 
     def get_default_config_file_path(self):
         return os.path.join(platformdirs.user_config_dir(),
@@ -174,8 +175,8 @@ class AmivApp(Gtk.Application):
                 "previous": "Left",
                 "delay_up": "Up",
                 "delay_down": "Down",
-                "next_dir": "Page_Up",
-                "previous_dir": "Page_Down",
+                "next_dir": "Page_Up,End",
+                "previous_dir": "Page_Down,Home",
             },
         }
 
