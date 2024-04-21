@@ -225,6 +225,7 @@ class AmivApp(Gtk.Application):
         self.y = 0
         self.delay = 0
         self.timeout_source = None
+        self.animation_source = None
 
         super().run(**kwargs)
 
@@ -328,6 +329,9 @@ class AmivApp(Gtk.Application):
         except GLib.GError:
             return False
 
+        if self.animation_source is not None:
+            GLib.source_remove(self.animation_source)
+            self.animation_source = None
         self.image_it = self.image.get_iter(None)
         self.get_next_frame(False)
 
@@ -348,13 +352,17 @@ class AmivApp(Gtk.Application):
         delay_to_next = self.image_it.get_delay_time()
 
         if delay_to_next != -1:
-            self.timeout_source = GLib.timeout_add(
+            self.animation_source = GLib.timeout_add(
                 delay_to_next,
                 self.get_next_frame,
                 True)
+        else:
+            self.animation_source = None
 
         if display:
             self.win.queue_draw_image()
+
+        return GLib.SOURCE_REMOVE
 
     def skip(self, count, try_multiple=True):
         initial_image = self.current_image
@@ -519,7 +527,6 @@ class AmivApp(Gtk.Application):
         self.skip(diff)
 
     def advance_slideshow(self, random_next):
-        self.timeout_source = None
         if not random_next:
             self.skip(1)
         else:
@@ -528,16 +535,7 @@ class AmivApp(Gtk.Application):
             while not ok and len(self.images) > 1:
                 ok = self.skip(random.randint(1, len(self.images)-1), False)
 
-        self.maybe_setup_slideshow_timeout()
-        # Returning False prevents repeating
-        return False
-
-    def maybe_setup_slideshow_timeout(self):
-        if self.timeout_source is None and self.delay:
-            self.timeout_source = GLib.timeout_add_seconds(
-                abs(self.delay),
-                self.advance_slideshow,
-                self.delay > 0)
+        return GLib.SOURCE_CONTINUE
 
     def adjust_delay(self, step):
         self.delay += step
@@ -546,14 +544,18 @@ class AmivApp(Gtk.Application):
             GLib.source_remove(self.timeout_source)
             self.timeout_source = None
 
+        if self.delay:
+            self.timeout_source = GLib.timeout_add_seconds(
+                abs(self.delay),
+                self.advance_slideshow,
+                self.delay > 0)
+
         if not self.delay:
             self.win.set_delay_label("", 0)
         elif self.delay > 0:
             self.win.set_delay_label("Random", self.delay)
         else:
             self.win.set_delay_label("Sequential", abs(self.delay))
-
-        self.maybe_setup_slideshow_timeout()
 
 
 app = AmivApp()
