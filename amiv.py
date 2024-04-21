@@ -218,6 +218,7 @@ class AmivApp(Gtk.Application):
 
         self.fit_image = True
         self.image = None
+        self.frame = None
         self.zoom = -1
         self.image_area_width = 0
         self.image_area_height = 0
@@ -337,8 +338,8 @@ class AmivApp(Gtk.Application):
 
         self.win.set_file_label(image_path)
         self.win.set_current_file_index(self.current_image+1)
-        self.x = self.image.get_width()/2
-        self.y = self.image.get_height()/2
+        self.x = self.frame.get_width()/2
+        self.y = self.frame.get_height()/2
 
         if self.fit_image:
             self.fit_to_window()
@@ -409,8 +410,8 @@ class AmivApp(Gtk.Application):
 
     def fit_to_window(self):
         possibilities = [
-            self.image_area_width/self.image.get_width(),
-            self.image_area_height/self.image.get_height(),
+            self.image_area_width/self.frame.get_width(),
+            self.image_area_height/self.frame.get_height(),
         ]
         self.update_zoom(min(possibilities))
 
@@ -444,10 +445,10 @@ class AmivApp(Gtk.Application):
     def set_center_pos(self, new_x, new_y):
         new_x = max(self.image_area_width/self.zoom/2,
             min(new_x,
-                self.image.get_width()-self.image_area_width/self.zoom/2))
+                self.frame.get_width()-self.image_area_width/self.zoom/2))
         new_y = max(self.image_area_height/self.zoom/2,
             min(new_y,
-                self.image.get_height()-self.image_area_height/self.zoom/2))
+                self.frame.get_height()-self.image_area_height/self.zoom/2))
         self.x = new_x
         self.y = new_y
 
@@ -469,7 +470,7 @@ class AmivApp(Gtk.Application):
         self.adjust_zoom(1-(dy*.1))
 
     def rotate(self, angle):
-        self.image = self.image.rotate_simple(angle)
+        self.frame= self.frame.rotate_simple(angle)
         self.last_zoom = -1
         if self.fit_image:
             self.fit_to_window()
@@ -486,12 +487,12 @@ class AmivApp(Gtk.Application):
             self.inhibit(self.win, 0, None)
 
     def draw_image(self, area, cr, width, height):
-        if not width or not height or not self.image or self.zoom <= 0:
+        if not width or not height or not self.frame or self.zoom <= 0:
             return
 
         if self.zoom != self.last_zoom:
-            new_width = self.image.get_width() * self.zoom
-            new_height = self.image.get_height() * self.zoom
+            new_width = self.frame.get_width() * self.zoom
+            new_height = self.frame.get_height() * self.zoom
             self.scaled_buf = self.frame.scale_simple(new_width,
                 new_height,
                 self.scaling)
