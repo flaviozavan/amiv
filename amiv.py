@@ -2,7 +2,8 @@
 
 import gi
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gtk, Gdk, Pango, GdkPixbuf, GLib
+gi.require_version("GExiv2", "0.10")
+from gi.repository import Gtk, Gdk, Pango, GdkPixbuf, GLib, GExiv2
 import sys
 import argparse
 import tomllib
@@ -219,7 +220,9 @@ class AmivApp(Gtk.Application):
         self.fit_image = True
         self.image = None
         self.frame = None
+        self.orientation = None
         self.zoom = -1
+        self.last_zoom = -1
         self.image_area_width = 0
         self.image_area_height = 0
         self.x = 0
@@ -330,6 +333,12 @@ class AmivApp(Gtk.Application):
         except GLib.GError:
             return False
 
+        try:
+            metadata = GExiv2.Metadata(self.images[self.current_image])
+            self.orientation = metadata.try_get_orientation()
+        except GLib.GError:
+            self.orientation = GExiv2.Orientation.UNSPECIFIED
+
         if self.animation_source is not None:
             GLib.source_remove(self.animation_source)
             self.animation_source = None
@@ -349,6 +358,7 @@ class AmivApp(Gtk.Application):
     def get_next_frame(self, display):
         self.image_it.advance()
         self.frame = self.image_it.get_pixbuf()
+        self.correct_for_orientation()
         self.last_zoom = -1
         delay_to_next = self.image_it.get_delay_time()
 
@@ -478,6 +488,11 @@ class AmivApp(Gtk.Application):
             self.set_center_pos(self.x, self.y)
         self.win.queue_draw_image()
 
+    def flip(self, horizontal):
+        self.frame = self.frame.flip(horizontal)
+        self.last_zoom = -1
+        self.win.queue_draw_image()
+
     def update_idle_inhibit(self, win, fullscreened):
         if win.is_fullscreen():
             self.inhibit(self.win,
@@ -537,6 +552,29 @@ class AmivApp(Gtk.Application):
                 ok = self.skip(random.randint(1, len(self.images)-1), False)
 
         return GLib.SOURCE_CONTINUE
+
+    def correct_for_orientation(self):
+        rotations = {
+            GExiv2.Orientation.ROT_90: 270,
+            GExiv2.Orientation.ROT_90_HFLIP: 270,
+            GExiv2.Orientation.ROT_90_VFLIP: 270,
+            GExiv2.Orientation.ROT_180: 180,
+            GExiv2.Orientation.ROT_270: 90,
+        }
+        flips = {
+            GExiv2.Orientation.HFLIP: True,
+            GExiv2.Orientation.VFLIP: False,
+            GExiv2.Orientation.ROT_90_HFLIP: True,
+            GExiv2.Orientation.ROT_90_VFLIP: False,
+        }
+
+        rotation = rotations.get(self.orientation, 0)
+        if rotation:
+            self.rotate(rotation)
+
+        flip = flips.get(self.orientation, None)
+        if flip is not None:
+            self.flip(flip)
 
     def adjust_delay(self, step):
         self.delay += step
