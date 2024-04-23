@@ -119,6 +119,8 @@ class AmivApp(Gtk.Application):
             "delay_down": lambda: self.adjust_delay(-1),
             "next_dir": lambda: self.skip_dir(1),
             "previous_dir": lambda: self.skip_dir(-1),
+            "flip_horizontal": lambda: self.flip(True),
+            "flip_vertical": lambda: self.flip(False),
         }
 
         self.key_map = {}
@@ -178,6 +180,8 @@ class AmivApp(Gtk.Application):
                 "delay_down": "Down",
                 "next_dir": "Page_Up,End",
                 "previous_dir": "Page_Down,Home",
+                "flip_horizontal": "bar",
+                "flip_vertical": "underscore",
             },
         }
 
